@@ -121,3 +121,100 @@ def test_extract_vbnet_empty_stdout():
     assert result["nodes"] == []
     assert result["edges"] == []
     assert "error" not in result
+
+
+# --- INT-02: detect() finds .vb files ---
+
+def test_detect_finds_vb_files(tmp_path):
+    """detect() returns .vb files in the code list."""
+    from graphify.detect import detect
+    vb = tmp_path / "test.vb"
+    vb.write_text("Public Class Foo\nEnd Class\n")
+    result = detect(tmp_path)
+    code_files = result["files"]["code"]
+    assert any(f.endswith(".vb") for f in code_files), f"No .vb in code files: {code_files}"
+
+
+# --- INT-02: collect_files() includes .vb files ---
+
+def test_collect_files_finds_vb(tmp_path):
+    """collect_files() includes .vb files in results."""
+    from graphify.extract import collect_files
+    vb = tmp_path / "mod.vb"
+    vb.write_text("Module M\nEnd Module\n")
+    files = collect_files(tmp_path)
+    suffixes = {f.suffix for f in files}
+    assert ".vb" in suffixes, f".vb not in collected suffixes: {suffixes}"
+
+
+# --- INT-03: end-to-end detect -> extract ---
+
+@pytest.mark.skipif(not _have_sidecar(), reason="Sidecar binary not built")
+def test_end_to_end_detect_and_extract(tmp_path):
+    """Full pipeline path: detect finds .vb, extract produces non-empty graph."""
+    from graphify.detect import detect
+    from graphify.extract import extract, collect_files
+    from graphify.validate import validate_extraction
+
+    # Create a small .vb file
+    vb = tmp_path / "EndToEnd.vb"
+    vb.write_text(
+        "Imports System\n\n"
+        "Public Class EndToEndTest\n"
+        "    Public Sub Run()\n"
+        "        Console.WriteLine(\"test\")\n"
+        "    End Sub\n"
+        "End Class\n"
+    )
+
+    # Step 1: detect finds the .vb file
+    detected = detect(tmp_path)
+    code_files = detected["files"]["code"]
+    assert any(f.endswith(".vb") for f in code_files), "detect() did not find .vb file"
+
+    # Step 2: collect_files finds the .vb file
+    collected = collect_files(tmp_path)
+    assert any(p.suffix == ".vb" for p in collected), "collect_files() did not find .vb file"
+
+    # Step 3: extract processes the .vb file
+    result = extract(collected)
+    assert len(result["nodes"]) > 0, f"Expected nodes, got: {result}"
+    assert len(result["edges"]) > 0, f"Expected edges, got: {result}"
+
+    # Step 4: output passes schema validation
+    errors = validate_extraction(result)
+    assert errors == [], f"Schema validation errors: {errors}"
+
+    # Step 5: verify expected node labels exist
+    labels = {n["label"] for n in result["nodes"]}
+    assert "EndToEndTest" in labels, f"Expected EndToEndTest class node, got labels: {labels}"
+    assert "Run" in labels or "Run()" in labels, f"Expected Run method node, got labels: {labels}"
+
+
+# --- INT-03 + TEST-02: batch subprocess count in extract() ---
+
+@pytest.mark.skipif(not _have_sidecar(), reason="Sidecar binary not built")
+def test_extract_batch_uses_single_subprocess(tmp_path):
+    """extract() calls sidecar exactly once for multiple .vb files."""
+    from graphify.extract import extract
+    from unittest.mock import patch as _patch
+
+    vb1 = tmp_path / "A.vb"
+    vb2 = tmp_path / "B.vb"
+    vb1.write_text("Public Class A\nEnd Class\n")
+    vb2.write_text("Public Class B\nEnd Class\n")
+
+    original_run = __import__("subprocess").run
+    call_count = 0
+
+    def counting_run(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return original_run(*args, **kwargs)
+
+    with _patch("graphify.extract.subprocess") as mock_sub:
+        mock_sub.run = counting_run
+        result = extract([vb1, vb2])
+
+    assert call_count == 1, f"Expected 1 subprocess call, got {call_count}"
+    assert len(result["nodes"]) >= 2, f"Expected at least 2 nodes (2 classes), got {len(result['nodes'])}"
