@@ -32,6 +32,9 @@ def test_classify_image():
     assert classify_file(Path("design.jpg")) == FileType.IMAGE
     assert classify_file(Path("diagram.webp")) == FileType.IMAGE
 
+def test_classify_vb():
+    assert classify_file(Path("module.vb")) == FileType.CODE
+
 def test_count_words_sample_md():
     words = count_words(FIXTURES / "sample.md")
     assert words > 5

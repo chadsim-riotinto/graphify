@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -2565,6 +2566,75 @@ def _check_tree_sitter_version() -> None:
         )
 
 
+# ── VB.NET extractor (Roslyn sidecar) ───────────────────────────────────────
+
+
+def _find_vbnet_sidecar() -> str | None:
+    """Find the VbNetSidecar binary relative to this file's location."""
+    here = Path(__file__).resolve().parent           # graphify/graphify/
+    project_root = here.parent.parent                # graphifyy_vbnet/
+    candidate = project_root / "sidecar" / "bin" / "Release" / "net10.0" / "VbNetSidecar.exe"
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
+def extract_vbnet(paths: list[Path]) -> dict:
+    """Extract VB.NET symbols and relationships via the Roslyn sidecar.
+
+    Accepts a list of .vb file paths, invokes the sidecar in a single
+    subprocess call (batch mode), and returns a merged
+    {nodes, edges, input_tokens, output_tokens} dict.
+    """
+    sidecar_path = _find_vbnet_sidecar()
+    if sidecar_path is None:
+        return {
+            "nodes": [], "edges": [],
+            "input_tokens": 0, "output_tokens": 0,
+            "error": "VbNetSidecar binary not found. Run: dotnet build -c Release sidecar/",
+        }
+
+    str_paths = [str(p.resolve()) for p in paths]
+    try:
+        result = subprocess.run(
+            [sidecar_path] + str_paths,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return {
+            "nodes": [], "edges": [],
+            "input_tokens": 0, "output_tokens": 0,
+            "error": f"VbNetSidecar not found at: {sidecar_path}",
+        }
+
+    if result.returncode != 0:
+        return {
+            "nodes": [], "edges": [],
+            "input_tokens": 0, "output_tokens": 0,
+            "error": f"VbNetSidecar exited {result.returncode}: {result.stderr[:200]}",
+        }
+
+    if not result.stdout.strip():
+        return {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0}
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return {
+            "nodes": [], "edges": [],
+            "input_tokens": 0, "output_tokens": 0,
+            "error": f"VbNetSidecar JSON decode error: {exc}",
+        }
+
+    return {
+        "nodes": data.get("nodes", []),
+        "edges": data.get("edges", []),
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+
+
 def extract(paths: list[Path]) -> dict:
     """Extract AST nodes and edges from a list of code files.
 
@@ -2622,7 +2692,37 @@ def extract(paths: list[Path]) -> dict:
         ".m": extract_objc,
         ".mm": extract_objc,
         ".jl": extract_julia,
+        ".vb": extract_vbnet,
     }
+
+    # VB.NET batch pre-collection: call sidecar once for ALL .vb files
+    # (never one subprocess per file — Phase 3 success criterion 3)
+    vb_paths = [p for p in paths if p.suffix.lower() == ".vb"]
+    vb_results_by_path: dict[Path, dict] = {}
+    if vb_paths:
+        merged = extract_vbnet(vb_paths)
+        if "error" not in merged:
+            # Distribute merged sidecar result back per-file (group by source_file)
+            by_file: dict[str, dict] = {}
+            for node in merged.get("nodes", []):
+                sf = node.get("source_file", "")
+                if sf not in by_file:
+                    by_file[sf] = {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0}
+                by_file[sf]["nodes"].append(node)
+            for edge in merged.get("edges", []):
+                sf = edge.get("source_file", "")
+                if sf in by_file:
+                    by_file[sf]["edges"].append(edge)
+            for vb_path in vb_paths:
+                key = str(vb_path.resolve())
+                vb_results_by_path[vb_path] = by_file.get(
+                    key,
+                    {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0},
+                )
+        else:
+            # Sidecar error — store the error result for all paths
+            for vb_path in vb_paths:
+                vb_results_by_path[vb_path] = merged
 
     total = len(paths)
     _PROGRESS_INTERVAL = 100
@@ -2631,6 +2731,13 @@ def extract(paths: list[Path]) -> dict:
             print(f"  AST extraction: {i}/{total} files ({i * 100 // total}%)", flush=True)
         extractor = _DISPATCH.get(path.suffix)
         if extractor is None:
+            continue
+        # VB.NET files already processed in batch above
+        if path in vb_results_by_path:
+            result = vb_results_by_path[path]
+            if "error" not in result:
+                save_cached(path, result, root)
+            per_file.append(result)
             continue
         cached = load_cached(path, root)
         if cached is not None:
@@ -2677,6 +2784,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ".rb", ".cs", ".kt", ".kts", ".scala", ".php", ".swift",
         ".lua", ".toc", ".zig", ".ps1",
         ".m", ".mm",
+        ".vb",
     }
     from graphify.detect import _load_graphifyignore, _is_ignored
     ignore_root = root if root is not None else target
