@@ -2600,7 +2600,14 @@ def extract_vbnet(paths: list[Path]) -> dict:
             [sidecar_path] + str_paths,
             capture_output=True,
             text=True,
+            timeout=120,
         )
+    except subprocess.TimeoutExpired:
+        return {
+            "nodes": [], "edges": [],
+            "input_tokens": 0, "output_tokens": 0,
+            "error": "VbNetSidecar timed out after 120s",
+        }
     except FileNotFoundError:
         return {
             "nodes": [], "edges": [],
