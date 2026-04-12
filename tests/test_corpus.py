@@ -62,7 +62,7 @@ def corpus_result():
     """Extract the full corpus once and share across all tests in this module."""
     assert _corpus is not None
     vb_files = _collect_vb_files(_corpus)
-    assert len(vb_files) == 79, f"Expected 79 .vb files, found {len(vb_files)}"
+    assert len(vb_files) > 0, "No .vb files found in Source/CPR"
     result = extract_vbnet(vb_files)
     assert "error" not in result, f"Sidecar error: {result.get('error')}"
     assert len(result["nodes"]) > 0, "Corpus produced zero nodes"
@@ -185,4 +185,21 @@ def test_corpus_passes_validate_extraction(corpus_result):
     assert errors == [], (
         f"validate_extraction found {len(errors)} error(s):\n"
         + "\n".join(str(e) for e in errors[:20])
+    )
+
+
+# ── Corpus completeness canary ─────────────────────────────────────────────
+
+def test_corpus_file_count():
+    """Canary: update this number when corpus intentionally changes.
+
+    WR-05: Separated from the corpus_result fixture so that a corpus size
+    change does not block all other regression tests with a confusing
+    fixture error. Fails independently with a clear message.
+    """
+    assert _corpus is not None
+    vb_files = _collect_vb_files(_corpus)
+    assert len(vb_files) == 79, (
+        f"Corpus size changed: expected 79, found {len(vb_files)}. "
+        "Update this assertion if the change is intentional."
     )
