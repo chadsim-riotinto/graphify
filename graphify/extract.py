@@ -2706,20 +2706,23 @@ def extract(paths: list[Path]) -> dict:
     # (never one subprocess per file — Phase 3 success criterion 3)
     vb_paths = [p for p in paths if p.suffix.lower() == ".vb"]
     vb_results_by_path: dict[Path, dict] = {}
+    vb_merged_edges: list[dict] = []
     if vb_paths:
         merged = extract_vbnet(vb_paths)
         if "error" not in merged:
-            # Distribute merged sidecar result back per-file (group by source_file)
+            # Distribute merged sidecar result back per-file for caching (nodes only).
+            # Edges are NOT distributed per-file because MergePartialClasses() remaps
+            # Designer-file edge IDs while retaining the original source_file path.
+            # Distributing by source_file would either duplicate or misplace cross-file
+            # edges. Instead, collect the merged (already-deduplicated) edges once and
+            # add them directly to all_edges after the per-file loop (WR-02 fix).
             by_file: dict[str, dict] = {}
             for node in merged.get("nodes", []):
                 sf = node.get("source_file", "")
                 if sf not in by_file:
                     by_file[sf] = {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0}
                 by_file[sf]["nodes"].append(node)
-            for edge in merged.get("edges", []):
-                sf = edge.get("source_file", "")
-                if sf in by_file:
-                    by_file[sf]["edges"].append(edge)
+            vb_merged_edges = merged.get("edges", [])
             for vb_path in vb_paths:
                 key = str(vb_path.resolve())
                 vb_results_by_path[vb_path] = by_file.get(
@@ -2762,6 +2765,13 @@ def extract(paths: list[Path]) -> dict:
     for result in per_file:
         all_nodes.extend(result.get("nodes", []))
         all_edges.extend(result.get("edges", []))
+
+    # WR-02: Add the merged VB.NET edges once (already filtered/deduplicated by
+    # the sidecar's FilterEdges + MergePartialClasses). Per-file VB results only
+    # contain nodes (edges are not distributed per-file to avoid duplication from
+    # Designer-file edge remapping).
+    if vb_merged_edges:
+        all_edges.extend(vb_merged_edges)
 
     # Add cross-file class-level edges (Python only - uses Python parser internally)
     py_paths = [p for p in paths if p.suffix == ".py"]
