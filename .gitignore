@@ -22,3 +22,9 @@ docs/superpowers/
 .vscode/
 openspec/
 uv.lock
+
+# VB.NET sidecar build artifacts
+sidecar/bin/
+sidecar/obj/
+sidecar.tests/bin/
+sidecar.tests/obj/

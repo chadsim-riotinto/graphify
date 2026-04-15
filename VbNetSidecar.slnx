@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/sidecar.tests/">
+    <Project Path="sidecar.tests/VbNetSidecar.Tests.csproj" />
+  </Folder>
+  <Folder Name="/sidecar/">
+    <Project Path="sidecar/VbNetSidecar.csproj" />
+  </Folder>
+</Solution>

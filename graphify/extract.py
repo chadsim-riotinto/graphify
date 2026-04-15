@@ -3034,8 +3034,8 @@ def _check_tree_sitter_version() -> None:
 def _find_vbnet_sidecar() -> str | None:
     """Find the VbNetSidecar binary relative to this file's location."""
     here = Path(__file__).resolve().parent           # graphify/graphify/
-    project_root = here.parent.parent                # graphifyy_vbnet/
-    candidate = project_root / "sidecar" / "bin" / "Release" / "net10.0" / "VbNetSidecar.exe"
+    repo_root = here.parent                          # graphify/
+    candidate = repo_root / "sidecar" / "bin" / "Release" / "net10.0" / "VbNetSidecar.exe"
     if candidate.exists():
         return str(candidate)
     return None
