@@ -8,7 +8,7 @@ PLATFORMS = {
     "claude": (".claude/skills/graphify/SKILL.md",),
     "codex": (".agents/skills/graphify/SKILL.md",),
     "opencode": (".config/opencode/skills/graphify/SKILL.md",),
-    "claw": (".claw/skills/graphify/SKILL.md",),
+    "claw": (".openclaw/skills/graphify/SKILL.md",),
     "droid": (".factory/skills/graphify/SKILL.md",),
     "trae": (".trae/skills/graphify/SKILL.md",),
     "trae-cn": (".trae-cn/skills/graphify/SKILL.md",),
@@ -39,7 +39,7 @@ def test_install_opencode(tmp_path):
 
 def test_install_claw(tmp_path):
     _install(tmp_path, "claw")
-    assert (tmp_path / ".claw" / "skills" / "graphify" / "SKILL.md").exists()
+    assert (tmp_path / ".openclaw" / "skills" / "graphify" / "SKILL.md").exists()
 
 
 def test_install_droid(tmp_path):
@@ -116,9 +116,9 @@ def _agents_install(tmp_path, platform):
     _install_fn(tmp_path, platform)
 
 
-def _agents_uninstall(tmp_path):
+def _agents_uninstall(tmp_path, platform=""):
     from graphify.__main__ import _agents_uninstall as _uninstall_fn
-    _uninstall_fn(tmp_path)
+    _uninstall_fn(tmp_path, platform=platform)
 
 
 def test_codex_agents_install_writes_agents_md(tmp_path):
@@ -218,7 +218,7 @@ def test_opencode_agents_uninstall_removes_plugin(tmp_path):
     """opencode uninstall removes the plugin file and deregisters from opencode.json."""
     import json as _json
     _agents_install(tmp_path, "opencode")
-    _agents_uninstall(tmp_path)
+    _agents_uninstall(tmp_path, platform="opencode")
     plugin = tmp_path / ".opencode" / "plugins" / "graphify.js"
     assert not plugin.exists()
     config_file = tmp_path / "opencode.json"
