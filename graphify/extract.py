@@ -3056,7 +3056,7 @@ def extract_vbnet(paths: list[Path]) -> dict:
             "error": "VbNetSidecar binary not found. Run: dotnet build -c Release sidecar/",
         }
 
-    str_paths = [str(p.resolve()) for p in paths]
+    str_paths = [p.as_posix() for p in paths]
     try:
         result = subprocess.run(
             [sidecar_path] + str_paths,
@@ -3197,7 +3197,7 @@ def extract(paths: list[Path], cache_root: Path | None = None) -> dict:
                 by_file[sf]["nodes"].append(node)
             vb_merged_edges = merged.get("edges", [])
             for vb_path in vb_paths:
-                key = str(vb_path.resolve())
+                key = vb_path.as_posix()
                 vb_results_by_path[vb_path] = by_file.get(
                     key,
                     {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0},
